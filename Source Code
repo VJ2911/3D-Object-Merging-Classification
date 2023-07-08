@@ -1,0 +1,132 @@
+import pandas as pd
+import numpy as nm
+from sklearn.model_selection import train_test_split
+from scipy.stats import randint
+import matplotlib.pyplot as mtp 
+import os
+import random
+import pyvista as pv
+from sklearn.preprocessing import StandardScaler 
+from sklearn.linear_model import LogisticRegression  
+import seaborn as sn
+from sklearn import metrics
+
+# Set the path to the directory containing the OBJ files
+path = r"C:\Users\VARUN\Downloads\objectoverlapdataset"
+
+# Get a list of all OBJ files in the directory
+obj_files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".obj")]
+
+# Shuffle the list and take the first 5 files
+random.shuffle(obj_files)
+obj_files = obj_files[:5]
+
+# Plot the meshes
+for obj_file in obj_files:
+    # Load the OBJ file
+    mesh = pv.read(obj_file)
+
+    # Plot the mesh
+    p = pv.Plotter()
+    p.add_mesh(mesh, color="tan", show_edges=True)
+    p.show()
+
+
+from scipy import ndimage
+
+
+def count_faces(obj_file):
+    """Count the number of faces in an OBJ file."""
+    num_faces = 0
+    with open(obj_file, 'r') as f:
+        for line in f:
+            if line.startswith('f '):
+                num_faces += 1
+    return num_faces
+
+def bounding_box(mesh):
+    # Get the vertices of the mesh
+    vertices = mesh.points
+    
+    # Find the minimum and maximum coordinates in each dimension
+    min_x, min_y, min_z = nm.min(vertices, axis=0)
+    max_x, max_y, max_z = nm.max(vertices, axis=0)
+    
+    # Calculate the dimensions of the bounding box
+    length = max_x - min_x
+    width = max_y - min_y
+    height = max_z - min_z
+    
+    # Calculate the volume of the bounding box
+    volume = length * width * height
+    
+    return length, width, height, volume
+
+# Load the Excel file containing the labels
+labels_df = pd.read_excel(r"C:\Users\VARUN\Downloads\objectoverlapdataset\labels.xlsx")
+
+# Set the path to the directory containing the OBJ files
+path = r'C:\Users\VARUN\Downloads\objectoverlapdataset'
+
+# Initialize lists to store the features and labels
+features = []
+labels = []
+file_names = []
+
+# Loop over the OBJ files in the directory
+for filename in os.listdir(path):
+    if filename.endswith('.obj'):
+        # Load the OBJ file and extract features
+        mesh = pv.read(os.path.join(path, filename))
+        num_vertices = mesh.n_points
+        surface_area = mesh.area
+        num_faces = count_faces(os.path.join(path, filename))
+        length, width, height, volume = bounding_box(mesh)
+                
+        # Add the features to the list
+        features.append([num_vertices, surface_area, volume, num_faces, length, width, height])
+        
+        # Find the label for this file and add it to the label list
+        label = labels_df.loc[labels_df['File Name'] == filename, 'Label'].iloc[0]
+        labels.append(label)
+        file_names.append(filename)
+        
+# Convert the features and labels lists to a DataFrame
+features_df = pd.DataFrame(features, columns=['num_vertices', 'surface_area', 'volume', 'num_faces', 'length', 'width', 'height'])
+features_df['Label'] = labels
+features_df['File Name'] = file_names
+
+# Save the DataFrame to a CSV file
+features_df.to_csv('features.csv', index=False)
+print(features_df.head())
+
+
+features_df.describe()
+
+features_df.iloc[:, 7].unique()
+
+x= features_df.iloc[:,[2,3,4,5,6]].values  
+y = features_df.iloc[:, 7].map({'overlapped': 1, 'non-overlapped': 0}).values
+
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2)
+
+st_x= StandardScaler()    
+x_train= st_x.fit_transform(x_train)    
+x_test= st_x.transform(x_test)  
+
+classifier= LogisticRegression(random_state=20)  
+classifier.fit(x_train, y_train)  
+
+y_pred= classifier.predict(x_test)  
+
+print(y_pred)
+
+confusion_matrix = pd.crosstab(y_test, y_pred, rownames=['Actual'], colnames=['Predicted'])
+sn.heatmap(confusion_matrix, annot=True)
+
+accuracy = metrics.accuracy_score(y_test, y_pred)
+accuracy_percentage = 100 * accuracy
+
+print('Accuracy : ', accuracy)
+print("Accuracy Percentage (%) : ", accuracy_percentage)
+
